@@ -6,43 +6,76 @@ import com.example.demo.repository.WeekRepository;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
-import java.time.temporal.IsoFields;
-import java.time.temporal.TemporalAdjusters;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
+
+import static java.util.Comparator.comparing;
 
 @Service
 class TicketsServiceImpl implements TicketsService {
     private final static String WEEK = "week";
     private WeekRepository weekRepository;
+    private DateService dateService;
 
-    public TicketsServiceImpl(WeekRepository weekRepository) {
+    public TicketsServiceImpl(WeekRepository weekRepository, DateService dateService) {
         this.weekRepository = weekRepository;
+        this.dateService = dateService;
     }
 
     @Override
     public Map<String, Integer> getTickets(LocalDate date) {
-        return getWeeks(date)
+        return dateService.getWeeks(date)
                 .stream()
                 .collect(Collectors.toMap(week -> WEEK+week.getId().getWeek(), Week::getTickets));
     }
 
     @Override
     public void modify(LocalDate date, Integer tickets) {
-        int ticketsPerWeek = tickets/howManyWeeksInQuarter(date);
+        int weeksPerQuater = dateService.howManyWeeksInQuarter(date);
+        int ticketsPerWeek = tickets/weeksPerQuater;
+        int ticketsWithoutWeek = tickets%weeksPerQuater;
 
-        getWeeks(date).forEach(week -> modifyWeek(week, ticketsPerWeek));
+        List<Week> sortedList = dateService.getWeeks(date)
+                .stream()
+                .sorted(comparing(Week::getTickets))
+                .collect(Collectors.toList());
+
+        if(ticketsWithoutWeek < 0) {
+            Collections.reverse(sortedList);
+        }
+
+        for(Week week : sortedList) {
+            int weekTickets = ticketsPerWeek;
+            if(ticketsWithoutWeek < 0) {
+                weekTickets--;
+                ticketsWithoutWeek++;
+            } else if(ticketsWithoutWeek > 0) {
+                weekTickets++;
+                ticketsWithoutWeek--;
+            }
+            dateService.modifyWeek(week, weekTickets);
+        }
     }
 
     @Override
     public void createTickets(LocalDate date, Integer tickets) {
-        int ticketsPerWeek = ticketsPerWeek(date, tickets);
-        for(int weekNo = weekOfDate(firstDayOfQuarter(date));
-            weekNo <= weekOfDate(lastDayOfQuarter(date));
+        int weeksPerQuater = dateService.howManyWeeksInQuarter(date);
+        int ticketsPerWeek = tickets/weeksPerQuater;
+        int ticketsWithoutWeek = tickets%weeksPerQuater;
+
+        for(int weekNo = dateService.weekOfDate(dateService.firstDayOfQuarter(date));
+            weekNo <= dateService.weekOfDate(dateService.lastDayOfQuarter(date));
             weekNo++) {
 
-            createWeekOfNotExists(date, weekNo, ticketsPerWeek);
+            int weekTickets = ticketsPerWeek;
+            if(ticketsWithoutWeek>0) {
+                ticketsWithoutWeek--;
+                weekTickets++;
+            }
+            createWeekOfNotExists(date, weekNo, weekTickets);
         }
     }
 
@@ -56,40 +89,4 @@ class TicketsServiceImpl implements TicketsService {
         }
     }
 
-    private List<Week> getWeeks(LocalDate date) {
-        return weekRepository.getAllBetweenWeeks(date.getYear(),
-                weekOfDate(firstDayOfQuarter(date)),
-                weekOfDate(lastDayOfQuarter(date)));
-    }
-
-    private void modifyWeek(Week week, int tickets) {
-        int tmpTickets = week.getTickets() + tickets;
-        if(tmpTickets < 0) {
-            tmpTickets = 0;
-        }
-        week.setTickets(tmpTickets);
-        weekRepository.save(week);
-    }
-
-    private LocalDate firstDayOfQuarter(LocalDate date) {
-        return date.with(date.getMonth().firstMonthOfQuarter())
-                .with(TemporalAdjusters.firstDayOfMonth());
-    }
-
-    private LocalDate lastDayOfQuarter(LocalDate date) {
-        return firstDayOfQuarter(date).plusMonths(2)
-                .with(TemporalAdjusters.lastDayOfMonth());
-    }
-
-    private int weekOfDate(LocalDate date) {
-        return date.get(IsoFields.WEEK_OF_WEEK_BASED_YEAR);
-    }
-
-    private int howManyWeeksInQuarter(LocalDate date) {
-        return weekOfDate(lastDayOfQuarter(date)) - weekOfDate(firstDayOfQuarter(date));
-    }
-
-    private int ticketsPerWeek(LocalDate date, int tickets) {
-        return tickets/howManyWeeksInQuarter(date);
-    }
 }

@@ -43,7 +43,7 @@ public class SettlementsController {
     }
 
     @PostMapping(path = "/tickets/{date}/modify",
-            consumes = MediaType.APPLICATION_JSON_VALUE,
+            consumes = MediaType.APPLICATION_FORM_URLENCODED_VALUE,
             produces = MediaType.APPLICATION_JSON_VALUE)
     public Map<String, Integer> modifyPromotionTickets(@RequestParam Integer tickets,
                                                        @ApiParam(value = "date", example = "yyyy-mm-dd")
